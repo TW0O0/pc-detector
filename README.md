@@ -1,1 +1,1 @@
-# pc-detector
+Pachyonychia Congenita Detector
