@@ -1,16 +1,11 @@
+import os
 import streamlit as st
-import tensorflow as tf
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense, Dropout
-from tensorflow.keras.preprocessing.image import img_to_array
-from PIL import Image
-import numpy as np
-import io
+from openai import OpenAI
 
-# Set up the page
-st.set_page_config(page_title="Pachyonychia Congenita Image Analysis", layout="wide")
+# Initialize the OpenAI client
+client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
 
-# Create the title and description
+# Set up the Streamlit app interface
 st.title("Pachyonychia Congenita Image Analysis")
 st.write("Upload an image to analyze for potential indicators of Pachyonychia Congenita")
 
@@ -28,114 +23,6 @@ with st.expander("About Pachyonychia Congenita"):
     - Cysts (often on the face, scalp, and trunk)
     """)
 
-# Function to create model (we'll create it on the fly for this example)
-def create_model():
-    model = Sequential([
-        Conv2D(32, (3, 3), activation='relu', input_shape=(224, 224, 3)),
-        MaxPooling2D(2, 2),
-        Conv2D(64, (3, 3), activation='relu'),
-        MaxPooling2D(2, 2),
-        Conv2D(128, (3, 3), activation='relu'),
-        MaxPooling2D(2, 2),
-        Flatten(),
-        Dense(512, activation='relu'),
-        Dropout(0.5),
-        Dense(1, activation='sigmoid')  # Binary classification (PC or not PC)
-    ])
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    return model
-
-# Function to analyze image
-def analyze_image(img, image_type, additional_info):
-    # In a real application, you would load your trained model here
-    # For demonstration, we'll create a simple model and simulate analysis
-    
-    # Preprocess the image
-    img = img.resize((224, 224))
-    img_array = img_to_array(img)
-    img_array = np.expand_dims(img_array, axis=0)
-    img_array = img_array / 255.0  # Normalize
-    
-    # In a real application with a trained model:
-    # prediction = model.predict(img_array)
-    # confidence = float(prediction[0][0])
-    
-    # For demonstration, we'll simulate an analysis
-    # This is where your trained model would actually analyze the image
-    
-    # Simulated analysis based on image type
-    analysis_data = {
-        "Nails": {
-            "features": ["Nail thickening", "Discoloration", "Curved appearance"],
-            "confidence": 0.82,
-            "subtype": "PC-1 (Jadassohn-Lewandowsky syndrome)",
-            "next_steps": "Genetic testing for KRT6A, KRT16, or KRT17 mutations"
-        },
-        "Feet/Plantar surface": {
-            "features": ["Painful calluses", "Hyperkeratosis", "Blistering"],
-            "confidence": 0.78,
-            "subtype": "PC-1 or PC-2 (Jackson-Lawler syndrome)",
-            "next_steps": "Genetic testing and dermatological evaluation"
-        },
-        "Palms/Hands": {
-            "features": ["Palmar keratoderma", "Thickened skin", "Hyperhidrosis"],
-            "confidence": 0.75,
-            "subtype": "PC-1 or PC-2",
-            "next_steps": "Genetic testing for KRT6A, KRT6B, KRT16, or KRT17 mutations"
-        },
-        "Oral cavity": {
-            "features": ["Oral leukokeratosis", "White patches", "Mucosal thickening"],
-            "confidence": 0.68,
-            "subtype": "PC-1",
-            "next_steps": "Oral examination and genetic testing"
-        },
-        "Skin/Follicular": {
-            "features": ["Follicular hyperkeratosis", "Cysts", "Papules"],
-            "confidence": 0.72,
-            "subtype": "PC-2 or PC-3 (Schafer-Brunauer syndrome)",
-            "next_steps": "Skin biopsy and genetic testing"
-        },
-        "Other": {
-            "features": ["Requires specialist evaluation"],
-            "confidence": 0.60,
-            "subtype": "Indeterminate",
-            "next_steps": "Consult with dermatologist and genetic counselor"
-        }
-    }
-    
-    # Get the analysis for the selected image type
-    analysis = analysis_data[image_type]
-    
-    # Generate a detailed analysis result
-    result = f"""
-    ## Analysis of {image_type} Image
-
-    **Potential PC Indicators Identified:**
-    """
-    
-    for feature in analysis["features"]:
-        result += f"- {feature}\n"
-    
-    result += f"""
-    **Additional Context Considered:**
-    {additional_info if additional_info else "No additional information provided."}
-    
-    **Confidence Assessment:**
-    The visual features are {int(analysis["confidence"]*100)}% consistent with Pachyonychia Congenita indicators.
-    
-    **Potential PC Subtype:**
-    The features are most consistent with {analysis["subtype"]}.
-    
-    **Recommended Next Steps:**
-    {analysis["next_steps"]}
-    
-    **Important Note:**
-    This is an AI assessment based on visual indicators only and NOT a medical diagnosis. 
-    Pachyonychia Congenita is confirmed through genetic testing for mutations in KRT6A, KRT6B, KRT6C, KRT16, or KRT17 genes.
-    """
-    
-    return result
-
 # File uploader for the medical image
 uploaded_file = st.file_uploader("Choose an image file", type=["jpg", "jpeg", "png"])
 
@@ -152,17 +39,57 @@ if uploaded_file is not None:
     # When the user clicks the analyze button
     if st.button("Analyze Image"):
         # Display the uploaded image
-        img = Image.open(uploaded_file)
-        st.image(img, caption="Uploaded Image", use_container_width=True)
+        st.image(uploaded_file, caption="Uploaded Image", use_column_width=True)
+        
+        # Convert the image to base64 for API submission
+        import base64
+        bytes_data = uploaded_file.getvalue()
+        base64_image = base64.b64encode(bytes_data).decode("utf-8")
         
         with st.spinner("Analyzing the image for Pachyonychia Congenita indicators..."):
             try:
-                # Analyze the image
-                analysis_result = analyze_image(img, image_type, additional_info)
+                # Create the prompt with PC-specific medical context
+                prompt = f"""
+                You are a specialized medical AI assistant focused exclusively on identifying visual indicators of Pachyonychia Congenita (PC).
+                
+                Analyze this {image_type.lower()} image and identify any visual indicators consistent with Pachyonychia Congenita.
+                
+                Focus specifically on these PC indicators:
+                - Nail features: Severe thickening, discoloration, increased curvature, subungual hyperkeratosis
+                - Plantar keratoderma: Painful calluses on weight-bearing areas of feet
+                - Palmar keratoderma: Thickened skin on palms
+                - Oral leukokeratosis: White patches on tongue or oral mucosa
+                - Follicular hyperkeratosis: Small bumps around hair follicles
+                - Cysts: Particularly on face, scalp, or trunk
+                
+                Additional patient information: {additional_info}
+                
+                Provide a detailed analysis with:
+                1. Whether visual indicators consistent with Pachyonychia Congenita are present
+                2. Specific features you've identified that support or contradict a PC diagnosis
+                3. Confidence level in your assessment
+                4. Which PC subtype (PC-1, PC-2, PC-3, PC-4) these features might be most consistent with, if applicable
+                5. Suggested next steps for clinical confirmation (genetic testing, biopsy, etc.)
+                
+                IMPORTANT: Emphasize that this is an AI assessment and not a medical diagnosis. PC is genetically confirmed and requires professional evaluation.
+                """
+                
+                # Call the OpenAI API with the image
+                response = client.chat.completions.create(
+                    model="gpt-4-vision-preview",  # Use the vision-capable model
+                    messages=[
+                        {"role": "system", "content": "You are a medical AI assistant specializing exclusively in identifying visual indicators of Pachyonychia Congenita from images."},
+                        {"role": "user", "content": [
+                            {"type": "text", "text": prompt},
+                            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{base64_image}"}}
+                        ]}
+                    ],
+                    max_tokens=1200
+                )
                 
                 # Display the results
                 st.subheader("Analysis Results")
-                st.markdown(analysis_result)
+                st.write(response.choices[0].message.content)
                 
                 # Resource links
                 st.subheader("Pachyonychia Congenita Resources")
@@ -181,15 +108,6 @@ if uploaded_file is not None:
                 
             except Exception as e:
                 st.error(f"An error occurred: {str(e)}")
-
-# Add a section for collecting training data (for future model improvement)
-st.markdown("---")
-st.subheader("Help Improve This Tool")
-st.write("""
-If you have confirmed Pachyonychia Congenita cases with images and would like to contribute to improving 
-this tool's accuracy, please contact us. All data will be handled with strict confidentiality and used only 
-for research purposes with appropriate consent.
-""")
 
 # Footer with credit
 st.markdown("---")
