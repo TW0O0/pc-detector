@@ -84,7 +84,7 @@ This is a research project aimed at developing AI tools for detecting Pachyonych
 
 The model uses transfer learning with EfficientNet architecture and was trained on multiple datasets.
 
-For more information or to contribute to this research, please contact [your contact information].
+For more information or to contribute to this research, please contact kushalreddywork@gmail.com.
 """)
 
 # Add model information
