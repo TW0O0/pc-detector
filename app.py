@@ -3,7 +3,7 @@ import streamlit as st
 from openai import OpenAI
 
 # Initialize the OpenAI client
-client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
 
 # Set up the Streamlit app interface
 st.title("Pachyonychia Congenita Image Analysis")
