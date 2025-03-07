@@ -24,17 +24,28 @@ if 'original_image' not in st.session_state:
 if 'crop_coords' not in st.session_state:
     st.session_state.crop_coords = []
 
+# Model configuration
+MODEL_PATH = os.path.join('model', 'saved_models', 'efficientnet_pachyonychia_final.h5')
+MODEL_VERSION = "1.0"  # Add your model version here
+
 # Load the trained model
 @st.cache_resource  # Cache the model to avoid reloading
 def load_model():
-    model_path = os.path.join('model', 'saved_models', 'efficientnet_pachyonychia_final.h5')
-    if not os.path.exists(model_path):
-        st.warning(f"Model file not found at {model_path}. Please train the model first.")
+    try:
+        if not os.path.exists(MODEL_PATH):
+            st.error(f"Model file not found. Please ensure the model is available at {MODEL_PATH}")
+            return None
+        
+        # Load model with optimizations for inference
+        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
+        
+        # Optimize the model for inference
+        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+        
+        return model
+    except Exception as e:
+        st.error(f"Error loading model: {str(e)}")
         return None
-    
-    return tf.keras.models.load_model(model_path)
-
-model = load_model()
 
 # Image preprocessing function
 def preprocess_image(image, target_size=(224, 224)):
@@ -137,71 +148,82 @@ def image_manipulation_section():
     
     return image
 
-# Image upload
-uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
+# Main application flow
+def main():
+    # Load model at startup
+    model = load_model()
+    
+    # Image upload
+    uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
 
-if uploaded_file is not None:
-    # Display the uploaded image
-    image = Image.open(uploaded_file).convert('RGB')
-    
-    # Store the original image in session state for reset functionality
-    if st.session_state.original_image is None or uploaded_file != st.session_state.last_uploaded_file:
-        st.session_state.original_image = image.copy()
-        st.session_state.image = image.copy()
-        st.session_state.last_uploaded_file = uploaded_file
-    
-    # Display the original uploaded image
-    st.image(image, caption='Uploaded Image', use_column_width=True)
-    
-    # Add the image manipulation section
-    manipulated_image = image_manipulation_section()
-    
-    # Use the manipulated image for analysis if it exists
-    analysis_image = manipulated_image if manipulated_image is not None else image
-    
-    # Make prediction when the user clicks the button
-    if st.button("Analyze Image"):
-        if model is not None:
-            # Show a spinner while processing
-            with st.spinner('Analyzing image...'):
-                # Preprocess the image
-                processed_img = preprocess_image(analysis_image)
-                
-                # Make prediction
-                prediction = model.predict(processed_img)[0][0]
-                
-                # Display results
-                st.subheader("Analysis Results")
-                
-                # Create a progress bar for visualization
-                if prediction >= 0.5:
-                    probability = prediction * 100
-                    st.error(f"Potential Pachyonychia Congenita detected with {probability:.1f}% confidence")
-                else:
-                    probability = (1 - prediction) * 100
-                    st.success(f"No signs of Pachyonychia Congenita detected ({probability:.1f}% confidence)")
-                
-                # Show the probability as a progress bar
-                st.progress(float(prediction))
-                
-                # Display disclaimer
-                st.warning("Disclaimer: This tool is for research purposes only and should not replace professional medical diagnosis.")
-        else:
-            st.error("Model not loaded. Please train the model first.")
+    if uploaded_file is not None:
+        # Display the uploaded image
+        image = Image.open(uploaded_file).convert('RGB')
+        
+        # Store the original image in session state for reset functionality
+        if st.session_state.original_image is None or uploaded_file != st.session_state.get('last_uploaded_file'):
+            st.session_state.original_image = image.copy()
+            st.session_state.image = image.copy()
+            st.session_state.last_uploaded_file = uploaded_file
+        
+        # Display the original uploaded image
+        st.image(image, caption='Uploaded Image', use_column_width=True)
+        
+        # Add the image manipulation section
+        manipulated_image = image_manipulation_section()
+        
+        # Use the manipulated image for analysis if it exists
+        analysis_image = manipulated_image if manipulated_image is not None else image
+        
+        # Make prediction when the user clicks the button
+        if st.button("Analyze Image"):
+            if model is not None:
+                # Show a spinner while processing
+                with st.spinner('Analyzing image...'):
+                    try:
+                        # Preprocess the image
+                        processed_img = preprocess_image(analysis_image)
+                        
+                        # Make prediction
+                        prediction = model.predict(processed_img, verbose=0)[0][0]
+                        
+                        # Display results
+                        st.subheader("Analysis Results")
+                        
+                        # Create a progress bar for visualization
+                        if prediction >= 0.5:
+                            probability = prediction * 100
+                            st.error(f"Potential Pachyonychia Congenita detected with {probability:.1f}% confidence")
+                        else:
+                            probability = (1 - prediction) * 100
+                            st.success(f"No signs of Pachyonychia Congenita detected ({probability:.1f}% confidence)")
+                        
+                        # Show the probability as a progress bar
+                        st.progress(float(prediction))
+                        
+                        # Display disclaimer
+                        st.warning("Disclaimer: This tool is for research purposes only and should not replace professional medical diagnosis.")
+                    except Exception as e:
+                        st.error(f"Error during image analysis: {str(e)}")
+            else:
+                st.error("Model could not be loaded. Please check the model file location.")
 
-# Add information about the research project
-st.sidebar.title("About")
-st.sidebar.info("""
-## Pachyonychia Congenita Detector
-This is a research project aimed at developing AI tools for detecting Pachyonychia Congenita from images.
-The model uses transfer learning with EfficientNet architecture and was trained on multiple datasets.
-For more information or to contribute to this research, please contact kushalreddywork@gmail.com.
-""")
+    # Add information about the research project
+    st.sidebar.title("About")
+    st.sidebar.info("""
+    ## Pachyonychia Congenita Detector
+    This is a research project aimed at developing AI tools for detecting Pachyonychia Congenita from images.
+    The model uses transfer learning with EfficientNet architecture.
+    For more information or to contribute to this research, please contact kushalreddywork@gmail.com.
+    """)
 
-# Add model information
-if model is not None:
-    st.sidebar.subheader("Model Information")
-    st.sidebar.text("Architecture: EfficientNetB3")
-    st.sidebar.text("Input size: 224x224 pixels")
+    # Add model information
+    if model is not None:
+        st.sidebar.subheader("Model Information")
+        st.sidebar.text(f"Architecture: EfficientNetB3")
+        st.sidebar.text(f"Input size: 224x224 pixels")
+        st.sidebar.text(f"Model Version: {MODEL_VERSION}")
+        st.sidebar.text(f"TensorFlow Version: {tf.__version__}")
 
-# Run the Streamlit app with the command: streamlit run app.py
+if __name__ == "__main__":
+    main()
