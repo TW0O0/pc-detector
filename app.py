@@ -23,29 +23,51 @@ if 'original_image' not in st.session_state:
     st.session_state.original_image = None
 if 'crop_coords' not in st.session_state:
     st.session_state.crop_coords = []
+if 'model_loaded' not in st.session_state:
+    st.session_state.model_loaded = False
+if 'custom_model_path' not in st.session_state:
+    st.session_state.custom_model_path = None
 
-# Model configuration
-MODEL_PATH = os.path.join('model', 'saved_models', 'efficientnet_pachyonychia_final.h5')
-MODEL_VERSION = "1.0"  # Add your model version here
+# Model configuration - with multiple potential paths
+DEFAULT_MODEL_PATHS = [
+    os.path.join('model', 'saved_models', 'efficientnet_pachyonychia_final.h5'),
+    os.path.join('models', 'efficientnet_pachyonychia_final.h5'),
+    os.path.join('.', 'efficientnet_pachyonychia_final.h5')
+]
+MODEL_VERSION = "1.0"
 
 # Load the trained model
 @st.cache_resource  # Cache the model to avoid reloading
-def load_model():
-    try:
-        if not os.path.exists(MODEL_PATH):
-            st.error(f"Model file not found. Please ensure the model is available at {MODEL_PATH}")
-            return None
-        
-        # Load model with optimizations for inference
-        model = tf.keras.models.load_model(MODEL_PATH, compile=False)
-        
-        # Optimize the model for inference
-        model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-        
-        return model
-    except Exception as e:
-        st.error(f"Error loading model: {str(e)}")
-        return None
+def load_model(model_path=None):
+    """Load the model from the specified path or try default paths"""
+    paths_to_try = []
+    
+    # Add custom path if provided
+    if model_path is not None:
+        paths_to_try.append(model_path)
+    
+    # Add default paths
+    paths_to_try.extend(DEFAULT_MODEL_PATHS)
+    
+    # Try each path until a model is successfully loaded
+    for path in paths_to_try:
+        try:
+            if os.path.exists(path):
+                st.info(f"Loading model from: {path}")
+                
+                # Load model with optimizations for inference
+                model = tf.keras.models.load_model(path, compile=False)
+                
+                # Optimize the model for inference
+                model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
+                
+                st.session_state.model_loaded = True
+                return model
+        except Exception as e:
+            continue  # Try the next path
+    
+    # If we get here, no model was loaded
+    return None
 
 # Image preprocessing function
 def preprocess_image(image, target_size=(224, 224)):
@@ -116,10 +138,59 @@ def image_manipulation_section():
     
     return image
 
+# Model upload and management
+def model_management_section():
+    """Function to allow users to upload a custom model file"""
+    st.sidebar.subheader("Model Management")
+    
+    # Option to upload a custom model
+    uploaded_model = st.sidebar.file_uploader("Upload model (.h5 file)", type=['h5'])
+    
+    if uploaded_model is not None:
+        # Save the uploaded model to a temporary file
+        model_path = os.path.join(os.getcwd(), "temp_model.h5")
+        with open(model_path, "wb") as f:
+            f.write(uploaded_model.getbuffer())
+        
+        st.sidebar.success(f"Model uploaded successfully to {model_path}")
+        st.session_state.custom_model_path = model_path
+        
+        # Add a button to load the uploaded model
+        if st.sidebar.button("Load Uploaded Model"):
+            return load_model(model_path)
+    
+    # Add a button to search for model in default locations
+    if st.sidebar.button("Search for Model in Default Locations"):
+        return load_model()
+    
+    return None
+
 # Main application flow
 def main():
-    # Load model at startup
-    model = load_model()
+    # Add the model management section in the sidebar
+    custom_model = model_management_section()
+    
+    # Load model - first try the custom model from the sidebar if it exists
+    if custom_model is not None:
+        model = custom_model
+    # Otherwise try to load from default locations
+    elif not st.session_state.model_loaded:
+        model = load_model()
+        
+        # Display model loading error and instructions if needed
+        if model is None:
+            st.error("""
+            **Model file not found!**
+            
+            Please try one of the following solutions:
+            
+            1. Upload your model file using the 'Upload model' option in the sidebar
+            2. Place your model in one of these locations:
+               - model/saved_models/efficientnet_pachyonychia_final.h5
+               - models/efficientnet_pachyonychia_final.h5
+               - ./efficientnet_pachyonychia_final.h5 (in the same directory as this app)
+            3. Click 'Search for Model in Default Locations' in the sidebar to try again
+            """)
     
     # Image upload
     uploaded_file = st.file_uploader("Choose an image...", type=["jpg", "jpeg", "png"])
@@ -145,7 +216,10 @@ def main():
         
         # Make prediction when the user clicks the button
         if st.button("Analyze Image"):
-            if model is not None:
+            if st.session_state.model_loaded:
+                # Get the model
+                model = load_model(st.session_state.custom_model_path)
+                
                 # Show a spinner while processing
                 with st.spinner('Analyzing image...'):
                     try:
@@ -174,7 +248,7 @@ def main():
                     except Exception as e:
                         st.error(f"Error during image analysis: {str(e)}")
             else:
-                st.error("Model could not be loaded. Please check the model file location.")
+                st.error("Please load a model first using the sidebar options.")
 
     # Add information about the research project
     st.sidebar.title("About")
@@ -186,7 +260,8 @@ def main():
     """)
 
     # Add model information
-    if model is not None:
+    if st.session_state.model_loaded:
+        model = load_model(st.session_state.custom_model_path)
         st.sidebar.subheader("Model Information")
         st.sidebar.text(f"Architecture: EfficientNetB3")
         st.sidebar.text(f"Input size: 224x224 pixels")
