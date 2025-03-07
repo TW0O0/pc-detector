@@ -57,49 +57,17 @@ def preprocess_image(image, target_size=(224, 224)):
     image_array = np.expand_dims(image_array, axis=0)
     return image_array
 
-# Image manipulation section
+# Image manipulation section with cropping only
 def image_manipulation_section():
-    """Function that adds image manipulation capabilities to the Streamlit app."""
+    """Function that adds image cropping capability to the Streamlit app."""
     # Only show manipulation tools if an image is uploaded
     if st.session_state.image is None:
         return None
     
     image = st.session_state.image
     
-    st.subheader("Image Manipulation")
-    st.write("Adjust your image before analysis:")
-    
-    # Create three columns for different manipulation options
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        # Rotation
-        rotation_angle = st.slider("Rotate", -180, 180, 0, 5)
-        if rotation_angle != 0:
-            image = image.rotate(rotation_angle, expand=True, fillcolor=(255, 255, 255))
-    
-    with col2:
-        # Scaling
-        scale_factor = st.slider("Scale", 0.5, 2.0, 1.0, 0.1)
-        if scale_factor != 1.0:
-            new_size = (int(image.width * scale_factor), int(image.height * scale_factor))
-            image = image.resize(new_size, Image.LANCZOS)
-    
-    with col3:
-        # Brightness and contrast
-        brightness = st.slider("Brightness", 0.5, 1.5, 1.0, 0.1)
-        contrast = st.slider("Contrast", 0.5, 1.5, 1.0, 0.1)
-        if brightness != 1.0 or contrast != 1.0:
-            from PIL import ImageEnhance
-            if brightness != 1.0:
-                enhancer = ImageEnhance.Brightness(image)
-                image = enhancer.enhance(brightness)
-            if contrast != 1.0:
-                enhancer = ImageEnhance.Contrast(image)
-                image = enhancer.enhance(contrast)
-    
-    # Cropping section
-    st.write("Click and drag on the image to crop:")
+    st.subheader("Image Cropping")
+    st.write("Click and drag on the image to select an area to crop:")
     
     # Display image for cropping with coordinate capture
     coords = streamlit_image_coordinates(image, key="crop_tool")
@@ -135,13 +103,13 @@ def image_manipulation_section():
         st.info("Crop selection reset")
     
     # Reset all manipulations button
-    if st.button("Reset All Manipulations"):
+    if st.button("Reset Image"):
         image = st.session_state.original_image.copy()
         st.session_state.crop_coords = []
-        st.info("All manipulations reset")
+        st.info("Image reset to original")
     
     # Display the manipulated image
-    st.image(image, caption="Manipulated Image", use_column_width=True)
+    st.image(image, caption="Current Image", use_column_width=True)
     
     # Update the session state with the manipulated image
     st.session_state.image = image
@@ -169,7 +137,7 @@ def main():
         # Display the original uploaded image
         st.image(image, caption='Uploaded Image', use_column_width=True)
         
-        # Add the image manipulation section
+        # Add the image cropping section
         manipulated_image = image_manipulation_section()
         
         # Use the manipulated image for analysis if it exists
